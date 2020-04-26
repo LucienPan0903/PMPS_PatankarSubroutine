@@ -1,0 +1,32 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "type": "shell",
+            "label": "g++ linux",
+            "command": "g++",
+            "args": [
+                "-O3",
+                "${workspaceFolder}/main.cpp",
+                "-I",
+                "/usr/local/include",
+                "/usr/local/lib/liblapacke.a",
+                "/usr/local/lib/liblapack.a",
+                "/usr/local/lib/libblas.a",
+                "-lgfortran",
+                "-o",
+                "${workspaceFolder}/test.out"
+            ],
+            "options": {
+                "cwd": "/usr/bin"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+}
