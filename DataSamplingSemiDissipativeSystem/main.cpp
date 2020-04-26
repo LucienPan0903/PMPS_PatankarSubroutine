@@ -1,7 +1,7 @@
 #include "Array2D.h"
-#include "real.h"
 #include "lapack.h"
 #include "lapacke.h"
+#include "real.h"
 #include <algorithm> // std::sort
 #include <cmath>
 #include <cstdlib>
@@ -10,18 +10,22 @@
 #include <iomanip>
 #include <iostream>
 #include <vector>
-using TEST::Array2D;
-using TEST::real;
 using std::isinf;
 using std::isnan;
 using std::max;
 using std::vector;
-int nSpecies;
-int nReactions;
+using TEST::Array2D;
+using TEST::real;
+int nSpecies = 100;
+int nReactions = 100;
 double deltatime = 1;
 double patankarCriticalValue = 1e-13;
 int NTestedPerSample = 10;
 bool conservative = true;
+int maximumReactants = 10;
+real AmplititudeOfInternalEnergyEquation = 100;
+int NTested = 10000;
+
 // Coef is the coefficient for the rk scheme
 int patankar(double coef, const real &density_, const real &internale,
              vector<real> &scale, const real &reaction_rate,
@@ -60,7 +64,7 @@ int patankar(double coef, const real &density_, const real &internale,
         denorm *=
             pow(scale[inputComponent[re][ii]], 1.0 / inputComponent[re].size());
       }
-    //If the scale is 0, the reactionRate must be 0,
+    // If the scale is 0, the reactionRate must be 0,
     if (denorm == 0)
       rr[re] = 0;
     else
@@ -93,17 +97,19 @@ int patankar(double coef, const real &density_, const real &internale,
     outmax += density[ss];
   }
   ff0[nSpecies] = ff[nSpecies] = internale;
-  //outmax += internale;
+  // outmax += internale;
 
   std::vector<real> equationNormalizeValue(nSpecies + 1, 1.0);
   for (int eq = 0; eq < nSpecies + 1; ++eq) {
     equationNormalizeValue[eq] = std::max(ff0[eq], __DBL_MIN__);
     for (int re = 0; re < nReactions; ++re) {
-      equationNormalizeValue[eq] = std::max(equationNormalizeValue[eq], rr[re]*fabs(stoichiometryCoeff(re,eq)));
+      equationNormalizeValue[eq] =
+          std::max(equationNormalizeValue[eq],
+                   rr[re] * fabs(stoichiometryCoeff(re, eq)));
     }
   }
   std::vector<real> outMax(nSpecies + 1, outmax);
-  //For the semi-dissipative system, there is no upper bound for the internale
+  // For the semi-dissipative system, there is no upper bound for the internale
   outMax[nSpecies] = __DBL_MAX__;
 
   for (int eq = 0; eq < nSpecies + 1; ++eq) {
@@ -115,7 +121,7 @@ int patankar(double coef, const real &density_, const real &internale,
   }
   Array2D<real> stoichiometryCoeffTemp(stoichiometryCoeff);
 
-  //StoichiometryCoeff should also scaled.
+  // StoichiometryCoeff should also scaled.
   for (int re = 0; re < nReactions; ++re) {
     for (int eq = 0; eq < nSpecies + 1; ++eq) {
       stoichiometryCoeffTemp(re, eq) /= equationNormalizeValue[eq];
@@ -181,35 +187,34 @@ int patankar(double coef, const real &density_, const real &internale,
     max_c_res = -__DBL_MAX__;
     for (int i = 0; i < nSpecies + 1; ++i) {
       endRestultTemp[i] = ff[i] + pow(out[i], speciesMaxPower[i]);
-      max_c_res =
-          std::max(max_c_res, fabs(ff[i]));
+      max_c_res = std::max(max_c_res, fabs(ff[i]));
     }
-    //If the residual is decreasing
-    //Fine
+    // If the residual is decreasing
+    // Fine
     if (max_c_res < min_res) {
       accumulate_count = 0;
       ++accumulate_count_decreasing;
       min_res = max_c_res;
-    //If the residual is increasing
-    //Accumulate the count
+      // If the residual is increasing
+      // Accumulate the count
     } else {
       ++accumulate_count;
       accumulate_count_decreasing = 0;
     }
-    //If the nondecreasing steps is greater than the preset threshold,
-    //Decease the step size factor, i.e., theta
+    // If the nondecreasing steps is greater than the preset threshold,
+    // Decease the step size factor, i.e., theta
     if (accumulate_count > max_allowable_nondecreasing_steps) {
       accumulate_count = 0;
       min_res = max_c_res;
       theta *= factor;
     }
-    //If the nonincreasing steps is greater than the preset threshold,
-    //Enlarge the step size factor, i.e., theta
+    // If the nonincreasing steps is greater than the preset threshold,
+    // Enlarge the step size factor, i.e., theta
     if (accumulate_count_decreasing > decreasing_step_threashold) {
       theta /= factor;
       theta = std::min(theta, 1.0);
     }
-    //std::cout << "Nit " << nit << " Max res " << max_c_res << std::endl;
+    // std::cout << "Nit " << nit << " Max res " << max_c_res << std::endl;
     if (isnan(max_c_res) || isinf(max_c_res)) {
       std::cout << "NAN or INF Caught!\n";
       exit(-1);
@@ -217,8 +222,9 @@ int patankar(double coef, const real &density_, const real &internale,
     if (max_c_res < patankarCriticalValue) {
       // Recalculate out[i] to keep the conservativeness;
       // It seems a littble bit difficult to keep the numerical positivity
-      // rigrously although the residual is fully converged to little than patankarCriticalValue;
-      // Thus still a fabs() function is applied, it affects the consertivity very little.
+      // rigrously although the residual is fully converged to little than
+      // patankarCriticalValue; Thus still a fabs() function is applied, it
+      // affects the consertivity very little.
       for (int i = 0; i < nSpecies + 1; ++i) {
         out[i] = pow(fabs(endRestultTemp[i]), 1.0 / speciesMaxPower[i]);
       }
@@ -268,14 +274,15 @@ int patankar(double coef, const real &density_, const real &internale,
     std::vector<bool> reinitialize(nSpecies + 1, false);
     bool trigger = false;
     for (int i = 0; i < nSpecies + 1; ++i) {
-      //If this is not a reactant
+      // If this is not a reactant
       if (!isreactant[i]) {
         out[i] = pow(ff[i] + pow(out[i], speciesMaxPower[i]),
                      1.0 / speciesMaxPower[i]);
-      //Else newton step forward;
+        // Else newton step forward;
       } else {
         out[i] += theta * dc[i];
-        //Since this is a dissipative system, there is a upper bound for each specie
+        // Since this is a dissipative system, there is a upper bound for each
+        // specie
         out[i] = std::min(out[i], pow(outMax[i], 1.0 / speciesMaxPower[i]));
         if (out[i] <= 0) {
           out[i] = 0;
@@ -284,8 +291,8 @@ int patankar(double coef, const real &density_, const real &internale,
         }
       }
     }
-    //If there is a negative density (although cutoff to be 0)
-    //Reinitialize the cut-offed value;
+    // If there is a negative density (although cutoff to be 0)
+    // Reinitialize the cut-offed value;
     if (trigger) {
       for (int re = 0; re < nReactions; ++re) {
         multiplierrr[re] = 1.0;
@@ -361,6 +368,7 @@ double sampleTest(int argc, char **argv) {
     std::random_shuffle(speciesidx.begin(), speciesidx.begin() + nSpecies);
     int ninvolved = rand() % (nSpecies) + 1;
     int nreactant = rand() % ninvolved + 1;
+    nreactant = std::min(nreactant, maximumReactants);
     for (int ii = 0; ii < nreactant; ++ii) {
       inputComponent[rr].push_back(speciesidx[ii]);
     }
@@ -369,12 +377,12 @@ double sampleTest(int argc, char **argv) {
       outputComponent[rr].push_back(speciesidx[ii]);
     }
     std::sort(outputComponent[rr].begin(), outputComponent[rr].end());
-    //For the semi-dissipative system, i.e., the last equation of internale
-    //may be increasing
+    // For the semi-dissipative system, i.e., the last equation of internale
+    // may be increasing
     int exo = rand() % 2;
     if (exo == 0) {
       inputComponent[rr].push_back(nSpecies);
-    } else if(exo == 1){
+    } else if (exo == 1) {
       outputComponent[rr].push_back(nSpecies);
     }
   }
@@ -386,10 +394,10 @@ double sampleTest(int argc, char **argv) {
       int idx = inputComponent[rr][ii];
       double tmp = rand() / double(RAND_MAX);
       stoi(rr, idx) = -tmp;
-      if(idx != nSpecies)
-      total_reactant += tmp;
-      else{
-        stoi(rr, idx) *= 1;
+      if (idx != nSpecies)
+        total_reactant += tmp;
+      else {
+        stoi(rr, idx) *= AmplititudeOfInternalEnergyEquation;
       }
     }
     double total_production = 0;
@@ -397,19 +405,19 @@ double sampleTest(int argc, char **argv) {
       int idx = outputComponent[rr][ii];
       double tmp = rand() / double(RAND_MAX);
       stoi(rr, idx) = tmp;
-      if(idx != nSpecies)
-      total_production += tmp;
-      else{
-        stoi(rr, idx) *= 10000;
+      if (idx != nSpecies)
+        total_production += tmp;
+      else {
+        stoi(rr, idx) *= AmplititudeOfInternalEnergyEquation;
       }
     }
     double fraction = rand() / double(RAND_MAX);
-    if(conservative)
-    fraction = 1;//Conservative
+    if (conservative)
+      fraction = 1; // Conservative
     for (int ii = 0; ii < outputComponent[rr].size(); ++ii) {
       int idx = outputComponent[rr][ii];
-      if(idx != nSpecies)
-      stoi(rr, idx) *= total_reactant/total_production*fraction;
+      if (idx != nSpecies)
+        stoi(rr, idx) *= total_reactant / total_production * fraction;
     }
   }
   for (int ss = 0; ss < nSpecies + 1; ++ss) {
@@ -422,7 +430,7 @@ double sampleTest(int argc, char **argv) {
   std::vector<real> out0;
   int ret;
   double totalden = 0;
-  for(int ss = 0; ss < nSpecies; ++ss){
+  for (int ss = 0; ss < nSpecies; ++ss) {
     totalden += density[ss];
   }
   bool error_flag = false;
@@ -430,34 +438,38 @@ double sampleTest(int argc, char **argv) {
   for (int ii = 0; ii < NTestedPerSample; ++ii) {
     out.resize(nSpecies + 1);
     for (int ss = 0; ss < nSpecies; ++ss) {
-       out[ss] = totalden * (rand() / (RAND_MAX + 0.0));
+      out[ss] = totalden * (rand() / (RAND_MAX + 0.0));
     }
-    //Choose a random value for the internale
+    // Choose a random value for the internale
     out[nSpecies] = internale * (rand() / (RAND_MAX + 0.0));
     ret = patankar(1.0, density[0], internale, scale, reactionrate[0],
                    inputComponent, outputComponent, stoi, out);
-    if(ret){
-      std::cout << "Fatal error found! Not converged in " << __FILE__ << ":" << __LINE__ << std::endl;
+    if (ret) {
+      std::cout << "Fatal error found! Not converged in " << __FILE__ << ":"
+                << __LINE__ << std::endl;
+      ii -= 1;
+      continue;
     }
     if (!ii) {
       out0 = out;
-       for (int ii = 0; ii < nSpecies + 1; ++ii) {
+      for (int ii = 0; ii < nSpecies + 1; ++ii) {
         std::cout << std::scientific << std::setprecision(10) << out[ii] << " ";
       }
-       std::cout << std::endl;
-       std::cout << "Ret is " << ret << std::endl;
+      std::cout << std::endl;
+      std::cout << "Ret is " << ret << std::endl;
     } else {
       real error = 0;
       for (int ss = 0; ss < nSpecies; ++ss) {
-        error += pow(out[ss] - out0[ss], 2)/(totalden*totalden);
+        error += pow(out[ss] - out0[ss], 2) / (totalden * totalden);
       }
-      error += pow(out[nSpecies] - out0[nSpecies], 2)/std::max(internale*internale, out[nSpecies]*out[nSpecies]);
-      error /= (nSpecies+1);
+      error += pow(out[nSpecies] - out0[nSpecies], 2) /
+               std::max(internale * internale, out[nSpecies] * out[nSpecies]);
+      error /= (nSpecies + 1);
       error = sqrt(error);
-       for (int ii = 0; ii < nSpecies + 1; ++ii) {
+      for (int ii = 0; ii < nSpecies + 1; ++ii) {
         std::cout << std::scientific << std::setprecision(10) << out[ii] << " ";
       }
-       std::cout << std::endl;
+      std::cout << std::endl;
       if (error > 1e-6) {
         std::cout << "Error happends, two solutions found" << std::endl;
         std::cout << "Ret is " << ret << std::endl;
@@ -466,9 +478,10 @@ double sampleTest(int argc, char **argv) {
       }
     }
 
-stored:
+  stored:
     std::ofstream fout;
-    fout.open("NSpecies50NReactions50SemiDissipative.dat", std::ios::binary|std::ios::app);
+    fout.open("NSpecies50NReactions50SemiDissipative.dat",
+              std::ios::binary | std::ios::app);
     fout.write((char *)&nReactions, sizeof(nReactions));
     fout.write((char *)&nSpecies, sizeof(nSpecies));
     for (int re = 0; re < nReactions; ++re) {
@@ -497,7 +510,7 @@ stored:
       // std::cout << density[ii] << "--" << out[ii] << "\n";
     }
     fout.close();
-    if(error_flag){
+    if (error_flag) {
       exit(-1);
     }
   }
@@ -505,18 +518,11 @@ stored:
 }
 
 int main(int argc, char **argv) {
-  //Test sample
-  int NTested = 10000;
-  nSpecies = 50;
-  //Plus one internale
-  //Thus totally 50 species actually
-  nReactions = 50;
-  //Initialize the random seed;
   srand(time(NULL));
   for (int ii = 0; ii < NTested; ++ii) {
     int ret = sampleTest(argc, argv);
-    std::cout << "Testing sample " << ii << " returned value is "
-              << ret << std::endl;
+    std::cout << "Testing sample " << ii << " returned value is " << ret
+              << std::endl;
     if (ret != 0) {
       std::cout << "Error for the sample\n";
       exit(-1);

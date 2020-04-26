@@ -16,12 +16,14 @@ using std::max;
 using std::vector;
 using TEST::Array2D;
 using TEST::real;
-int nSpecies;
-int nReactions;
+int nSpecies = 100;
+int nReactions = 100;
 double deltatime = 1;
 double patankarCriticalValue = 1e-13;
 int NTestedPerSample = 10;
 bool conservative = true;
+int NTested = 1000000;
+int maximumReactants = 10;
 // Coef is the coefficient for the rk scheme
 int patankar(double coef, const real &density_, const real &internale,
              vector<real> &scale, const real &reaction_rate,
@@ -213,6 +215,7 @@ int patankar(double coef, const real &density_, const real &internale,
       std::cout << "NAN or INF Caught!\n";
       exit(-1);
     }
+    //std::cout << "Nit is " << nit << " res is " << max_c_res << std::endl;
     if (max_c_res < patankarCriticalValue) {
       // Recalculate out[i] to keep the conservativeness;
       // It seems a littble bit difficult to keep the numerical positivity
@@ -362,6 +365,7 @@ double sampleTest(int argc, char **argv) {
     std::random_shuffle(speciesidx.begin(), speciesidx.begin() + nSpecies);
     int ninvolved = rand() % (nSpecies) + 1;
     int nreactant = rand() % ninvolved + 1;
+    nreactant = std::min(nreactant, maximumReactants);
     for (int ii = 0; ii < nreactant; ++ii) {
       inputComponent[rr].push_back(speciesidx[ii]);
     }
@@ -491,6 +495,8 @@ double sampleTest(int argc, char **argv) {
     if (ret) {
       std::cout << "Fatal error found! Not converged in " << __FILE__ << ":"
                 << __LINE__ << std::endl;
+      ii -= 1;
+      continue;
     }
     if (!ii) {
       out0 = out;
@@ -523,7 +529,7 @@ double sampleTest(int argc, char **argv) {
   stored:
     std::ofstream fout;
     fout.open("NSpecies50NReactions50FullyDissipative.dat",
-              std::ios::binary | std::ios::app);
+              std::ios::binary);
     fout.write((char *)&nReactions, sizeof(nReactions));
     fout.write((char *)&nSpecies, sizeof(nSpecies));
     for (int re = 0; re < nReactions; ++re) {
@@ -561,11 +567,6 @@ double sampleTest(int argc, char **argv) {
 
 int main(int argc, char **argv) {
   // Test sample
-  int NTested = 1;
-  nSpecies = 10;
-  // Plus one internale
-  // Thus totally 50 species actually
-  nReactions = 2;
   // Initialize the random seed;
   srand(time(NULL));
   for (int ii = 0; ii < NTested; ++ii) {
