@@ -1,4 +1,7 @@
 # PMPS_PatankarSubroutine
+
+[![DOI](https://zenodo.org/badge/259113602.svg)](https://zenodo.org/badge/latestdoi/259113602)
+
 The subroutine used to solve the PMPRK scheme
 
 In the directory of DataSamplingFullyDissipativeSystem, a fully dissipative/conservative system is solved.
